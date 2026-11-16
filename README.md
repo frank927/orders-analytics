@@ -65,3 +65,34 @@ Un mismo cliente puede tener varios pedidos.
 
 El campo order_id permite identificar los duplicados sin eliminar
 pedidos legítimos que compartan otros valores.
+
+## Limpieza y carga
+
+Primero genera el CSV y después ejecuta:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.load_data
+```
+
+El proceso guarda los pedidos válidos en data/orders.db y las filas
+rechazadas con su motivo en data/orders_rejected.csv.
+
+Reglas de limpieza:
+
+- Se eliminan las filas duplicadas exactas.
+- Se aceptan fechas YYYY-MM-DD y DD/MM/YYYY y se guardan en formato ISO.
+- Se rechazan fechas imposibles e importes vacíos o inválidos.
+- Los importes deben ser positivos y tener precisión máxima de céntimos.
+- Se rechazan campos obligatorios vacíos y estados desconocidos.
+- Si dos pedidos válidos distintos comparten ID, se detiene la carga
+  para revisar el conflicto.
+
+Los importes se almacenan como céntimos enteros para evitar errores
+de precisión de coma flotante.
+
+La carga reemplaza el contenido de la tabla en una transacción.
+Repetirla con el mismo CSV mantiene el mismo resultado.
+
+Resultado comprobado con los datos generados:
+1.230 filas de entrada, 30 duplicados eliminados,
+40 filas rechazadas y 1.160 pedidos guardados.
