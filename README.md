@@ -46,6 +46,11 @@ Se pidió a ChatGPT una propuesta de generador reproducible con errores
 controlados. Se incorporó el código y se comprobó el número de filas,
 los identificadores distintos y las copias adicionales.
 
+Se corrigió una condición del autorizador propuesto por la IA:
+SQLite enviaba database_name=None en una lectura de COUNT(*).
+Se inspeccionaron los argumentos reales, se ajustó el permiso
+para ese caso y se añadió un test de regresión con una base temporal.
+
 ## Generación de datos
 
 ```powershell
