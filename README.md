@@ -13,8 +13,13 @@ de solo lectura.
 - Generación y carga comprobadas: 1.160 pedidos válidos.
 - Vistas SQL comprobadas contra los datos de origen.
 - Última ejecución de la suite: 40 casos aprobados.
-- Integración con Ollama implementada y probada con HTTP simulado.
-- Pendiente: comprobar el recorrido completo con el modelo local real.
+- Integración con Ollama probada mediante HTTP simulado y modelo real.
+- Casos reales comprobados: ventas mensuales, recuento de pedidos,
+  ranking de clientes y rechazo de una solicitud de borrado.
+- Tras solicitar el borrado, se comprobó que permanecían 1.160 pedidos.
+
+Estas comprobaciones cubren los casos descritos; no garantizan
+la exactitud del modelo para cualquier pregunta.
 
 ## Requisitos
 
@@ -39,6 +44,9 @@ py -m venv .venv
 
 No es necesario activar el entorno: los comandos utilizan directamente
 su ejecutable de Python.
+
+Si pip detecta paquetes externos al entorno virtual, consulta el
+apartado sobre PYTHONPATH al final de este documento.
 
 ### 2. Preparar Ollama
 
@@ -100,10 +108,17 @@ y están excluidos de Git.
 - Comprobación: http://127.0.0.1:8000/health
 - Documentación interactiva: http://127.0.0.1:8000/docs
 
-Desde /docs se puede probar POST /ask mediante la opción
-"Try it out".
+Desde /docs se puede probar POST /ask:
 
-## Ejemplo de petición
+1. Desplegar el endpoint.
+2. Pulsar "Try it out".
+3. Editar el JSON de entrada.
+4. Pulsar "Execute".
+
+La primera petición puede tardar más porque Ollama necesita cargar
+el modelo en memoria.
+
+## Ejemplo de petición y respuesta real
 
 POST /ask recibe:
 
@@ -113,7 +128,26 @@ POST /ask recibe:
 }
 ```
 
-También puede enviarse desde otra terminal PowerShell:
+Respuesta observada con el modelo local:
+
+```json
+{
+  "question": "¿Cuánto vendimos en España en marzo de 2025?",
+  "sql": "SELECT total_sales_eur FROM monthly_sales WHERE country = 'España' AND month = '2025-03'",
+  "rows": [
+    {
+      "total_sales_eur": 2222.34
+    }
+  ],
+  "row_count": 1,
+  "truncated": false
+}
+```
+
+El resultado coincide con la comprobación directa en SQLite:
+2.222,34 EUR correspondientes a 9 pedidos completados.
+
+También puede enviarse la petición desde otra terminal PowerShell:
 
 ```powershell
 $questionBody = @{
@@ -128,7 +162,7 @@ Invoke-RestMethod `
     ConvertTo-Json -Depth 10
 ```
 
-La respuesta contiene:
+Campos de la respuesta:
 
 | Campo | Significado |
 |---|---|
@@ -138,10 +172,8 @@ La respuesta contiene:
 | row_count | Número de filas incluidas en la respuesta |
 | truncated | Indica si quedaron filas fuera del límite de resultados |
 
-Como referencia para verificar el modelo, la consulta SQL directa
-sobre España en marzo de 2025 devuelve 9 pedidos completados y
-2.222,34 EUR. Este resultado se comprobó en SQLite; todavía está
-pendiente contrastarlo mediante el endpoint con el LLM real.
+row_count describe las filas de la respuesta, no el número de
+pedidos representados por una agregación.
 
 ## Datos y reglas de limpieza
 
@@ -252,8 +284,11 @@ La llamada a Ollama utiliza un tiempo de espera de lectura de
 automáticos.
 
 Una respuesta JSON bien formada no garantiza que el SQL sea seguro:
-la validación SQL se ejecuta igualmente. Tampoco garantiza que el
-modelo haya interpretado correctamente la pregunta.
+la validación SQL se ejecuta igualmente.
+
+La validación controla permisos y estructuras admitidas, pero no
+garantiza que el modelo haya interpretado correctamente la pregunta,
+los valores de los filtros o las unidades monetarias.
 
 ## Errores de la API
 
@@ -263,15 +298,21 @@ de eliminar espacios al principio y al final.
 | Código HTTP | Situación |
 |---|---|
 | 422 | Entrada inválida, SQL no permitido o consulta no ejecutable |
-| 502 | Fallo de conexión con Ollama, tiempo de espera agotado o respuesta inválida del modelo |
+| 502 | Fallo del proveedor, respuesta inválida o rechazo comunicado por el modelo |
 
 Los errores controlados se devuelven en el campo detail.
 
-## Tests
+Un rechazo comunicado por el modelo se trata actualmente como
+LLMError. Con más tiempo se distinguiría de los fallos técnicos
+del proveedor mediante un código específico.
+
+## Tests automatizados
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
 ```
+
+Última ejecución: 40 casos aprobados.
 
 La suite incluye pruebas de:
 
@@ -290,6 +331,21 @@ en los tests del endpoint. Las pruebas de la integración con Ollama
 simulan la comunicación HTTP.
 
 Las bases de prueba son temporales y no modifican data/orders.db.
+
+## Comprobaciones manuales con el modelo real
+
+Se utilizó qwen2.5-coder:1.5b mediante Ollama.
+
+| Caso | Resultado comprobado |
+|---|---|
+| Ventas de España en marzo de 2025 | 2.222,34 EUR, coincidente con SQLite |
+| Recuento de pedidos incluyendo todos los estados | 1.160 pedidos |
+| Diez clientes con mayor importe comprado | Diez clientes; Cliente_039 encabeza el ranking con 2.910,57 EUR |
+| Solicitud de borrar todos los pedidos | Error controlado |
+| Recuento posterior a la solicitud de borrado | Se mantienen los 1.160 pedidos |
+
+Estas verificaciones son independientes de los tests automatizados
+con respuestas simuladas.
 
 ## Organización del código
 
@@ -318,22 +374,28 @@ Las bases de prueba son temporales y no modifican data/orders.db.
   el proveedor durante las pruebas.
 - Ollama permite ejecutar un modelo real sin depender de la
   facturación de un proveedor externo.
-- Se eligió inicialmente un modelo de 1.5B por las limitaciones
-  del equipo de desarrollo, con 8 GB de RAM.
+- Se eligió un modelo de 1.5B por las limitaciones del equipo
+  de desarrollo, con 8 GB de RAM.
 - La política SQL limitada reduce el alcance de consultas admitidas
   y facilita revisar su comportamiento.
+- El prompt incluye valores de países, reglas monetarias y ejemplos
+  para ayudar al modelo a utilizar correctamente el esquema.
 
 ## Limitaciones y mejoras con más tiempo
 
-- Evaluar la exactitud del modelo con un conjunto de preguntas y
-  resultados esperados, incluyendo ambigüedades y solicitudes
-  que no se pueden responder.
+- Evaluar la exactitud del modelo con un conjunto más amplio de
+  preguntas y resultados esperados, incluyendo ambigüedades
+  y solicitudes que no se pueden responder.
 - Medir latencia y consumo de memoria del modelo local y comparar
   alternativas según el hardware disponible.
 - Ampliar la cobertura de tests de permisos, vistas, límites
   y fallos de ejecución.
-- Incorporar validación de columnas y ampliar las construcciones
-  SQL admitidas únicamente si lo requieren los casos de uso.
+- Incorporar validación de columnas y comprobaciones semánticas
+  sobre filtros y unidades.
+- Ampliar las construcciones SQL admitidas únicamente si lo
+  requieren los casos de uso.
+- Distinguir los rechazos funcionales del modelo de los errores
+  técnicos del proveedor en las respuestas HTTP.
 - Añadir logging estructurado y métricas sin registrar secretos.
 - Incorporar autenticación y límites de peticiones antes de exponer
   la aplicación fuera del entorno local.
@@ -350,6 +412,7 @@ Se utilizó ChatGPT como apoyo durante el desarrollo.
 - Proponer el generador reproducible y las reglas de limpieza.
 - Ayudar a implementar las vistas, la validación SQL y el ejecutor.
 - Proponer tests y la integración con un modelo local.
+- Ayudar a diagnosticar errores observados durante las pruebas.
 - Revisar las instrucciones de ejecución y la documentación.
 
 ### Qué se aceptó
@@ -361,11 +424,15 @@ Se aceptaron SQLite, los importes en céntimos enteros, la separación
 entre proveedor y endpoint, y el uso de dependencias sustituibles
 para probar la API sin llamar al modelo real.
 
+También se incorporó la propuesta de usar Ollama con un modelo
+pequeño para ejecutar la prueba en el equipo disponible.
+
 ### Qué se corrigió o ajustó
 
 - Se detectó una instalación externa de PySpark accesible mediante
   PYTHONPATH. Se eliminó esa variable de la sesión de PowerShell
-  antes de registrar las dependencias.
+  antes de registrar las dependencias. Al reaparecer Spark en el
+  archivo de dependencias desde otra sesión, se corrigió de nuevo.
 - Una comprobación manual sobre España devolvía un resultado vacío
   porque PowerShell alteraba la ñ al enviar código por una tubería.
   Se verificó la consulta utilizando un escape Unicode.
@@ -375,11 +442,16 @@ para probar la API sin llamar al modelo real.
   de regresión con una base temporal.
 - Se descartó la integración inicial prevista con OpenAI y se adaptó
   el proveedor a Ollama local por las restricciones de pago.
+- En la primera prueba real, el modelo utilizó 'Spain' en lugar
+  de 'España' y etiquetó céntimos como euros sin convertirlos.
+  Se reforzó el prompt con valores exactos, reglas de unidades
+  y ejemplos. La siguiente petición devolvió el resultado correcto.
 - Se actualizaron las instrucciones para distinguir los tests
-  simulados de la comprobación pendiente con un modelo real.
+  simulados de las comprobaciones realizadas con el modelo real.
 
-La última ejecución comunicada incluye 40 casos aprobados.
-La inferencia real con Ollama todavía está pendiente de comprobar.
+La última ejecución de la suite incluye 40 casos aprobados.
+La inferencia real se verificó en los casos descritos en este documento.
+Una evaluación más amplia queda como mejora futura.
 
 ## Incidencia del entorno de desarrollo
 

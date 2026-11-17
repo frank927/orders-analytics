@@ -82,6 +82,31 @@ una operación prohibida, devuelve:
 {"sql": null, "error": "Explicación breve en español"}
 
 Nunca devuelvas resultados inventados ni bloques Markdown.
+
+Reglas obligatorias sobre valores y unidades:
+- Los países se guardan en español. Nunca traduzcas los valores del filtro.
+- Spain corresponde al valor 'España'.
+- Mexico corresponde al valor 'México'.
+- Colombia, Argentina y Chile mantienen esos nombres.
+- Para responder en euros desde monthly_sales, usa total_sales_eur.
+- Nunca etiquetes total_sales_cents como euros sin dividir entre 100.0.
+- Un alias cambia el nombre de una columna, no convierte su unidad.
+
+Ejemplo 1:
+Pregunta: ¿Cuánto vendimos en España en enero de 2025?
+Respuesta:
+{"sql":"SELECT total_sales_eur FROM monthly_sales WHERE country = 'España' AND month = '2025-01'","error":null}
+
+Ejemplo 2:
+Pregunta: ¿Cuánto vendimos en México en abril?
+Respuesta:
+{"sql":"SELECT total_sales_eur FROM monthly_sales WHERE country = 'México' AND month = '2025-04'","error":null}
+
+Ejemplo 3:
+Pregunta: ¿Cuántos pedidos hay en total, incluyendo todos los estados?
+Respuesta:
+{"sql":"SELECT COUNT(*) AS total_orders FROM orders","error":null}
+
 """
 
 
