@@ -146,3 +146,28 @@ se gestionarán en la API.
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
 ```
+
+## Endpoint de preguntas
+
+POST /ask recibe un JSON con el campo question.
+
+Ejemplo:
+
+{"question": "¿Cuánto vendimos en España en marzo de 2025?"}
+
+La pregunta debe contener entre 1 y 1.000 caracteres, después
+de eliminar espacios al principio y al final.
+
+La respuesta incluye la pregunta, el SQL ejecutado, las filas
+devueltas, su número y un indicador de resultados truncados.
+
+Errores controlados:
+
+- 422: entrada inválida, consulta no permitida o consulta no ejecutable.
+- 502: fallo del proveedor LLM.
+
+Los tests sustituyen el proveedor LLM mediante dependency_overrides
+de FastAPI y utilizan una base SQLite temporal. No requieren
+credenciales ni consumen la API.
+
+También se prueban la limpieza de pedidos y la validación SQL.
