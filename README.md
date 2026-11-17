@@ -96,3 +96,48 @@ Repetirla con el mismo CSV mantiene el mismo resultado.
 Resultado comprobado con los datos generados:
 1.230 filas de entrada, 30 duplicados eliminados,
 40 filas rechazadas y 1.160 pedidos guardados.
+
+## Vistas SQL
+
+Después de cargar los pedidos:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.create_views
+```
+
+Las definiciones se encuentran en app/views.sql.
+
+- monthly_sales: ventas por año-mes y país.
+- top_customers: los 10 clientes con mayor importe total comprado.
+
+Ambas vistas incluyen únicamente pedidos con estado completed.
+Los pendientes y cancelados se conservan en orders, pero no cuentan
+como ventas.
+
+Los totales se calculan en céntimos enteros. También se ofrece una
+columna expresada en EUR para facilitar su lectura.
+
+Los empates del ranking se resuelven ordenando por identificador
+de cliente.
+
+## Validación SQL
+
+La consulta generada por el LLM se analiza con SQLGlot usando
+el dialecto SQLite.
+
+Solo se admite una sentencia SELECT sobre una de estas fuentes:
+orders, monthly_sales o top_customers.
+
+Se utiliza una lista explícita de estructuras y funciones permitidas.
+Esta versión no admite subconsultas, CTE, JOIN ni UNION.
+Tampoco permite consultar el catálogo interno ni otras bases de datos.
+
+La validación no garantiza que la consulta responda correctamente
+a la intención del usuario. Los errores de columnas o de ejecución
+se gestionarán en la API.
+
+## Ejecutar los tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -v
+```
