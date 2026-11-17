@@ -1,6 +1,5 @@
 fastapi
 uvicorn
-openai
 sqlglot
 python-dotenv
 pytest
